@@ -1,0 +1,27 @@
+_swir()
+{
+    compopt +o default
+    local cur prev prevprev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    prevprev="${COMP_WORDS[COMP_CWORD-2]}"
+
+    if [[ "${prevprev}" == "cam" ]]; then
+        opts="status exposure start init temperature kill"
+    else
+        case "${prev}" in
+            start)
+                opts="continuous"
+                ;;
+            *)
+                opts=$(swir list-cameras)
+                ;;
+        esac
+    fi
+
+    COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
+    return 0
+}
+
+complete -F _swir swir

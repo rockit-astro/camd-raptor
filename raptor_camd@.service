@@ -1,0 +1,13 @@
+[Unit]
+Description=Daemon for controlling a Raptor Ninox 1280 camera via Pyro.
+After=syslog.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Restart=on-failure
+Type=simple
+ExecStart=/usr/bin/env python3 -u /usr/bin/raptor_camd /etc/camd/%i.json
+
+[Install]
+WantedBy=multi-user.target
