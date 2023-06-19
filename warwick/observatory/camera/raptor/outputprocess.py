@@ -62,7 +62,8 @@ def output_process(process_queue, processing_framebuffer, processing_framebuffer
             .reshape((frame['data_height'], frame['data_width'])).copy()
         processing_framebuffer_offsets.put(frame['data_offset'])
 
-        date_end = frame['timestamp'] - frame['readout_time'] * u.s
+        # HACK: PIXCI time is bogus...
+        date_end = frame['read_end_time'] - frame['readout_time'] * u.s
         date_start = date_end - frame['exposure'] * u.s
 
         if frame['cooler_setpoint'] is not None:
@@ -85,13 +86,10 @@ def output_process(process_queue, processing_framebuffer, processing_framebuffer
             ('CAMID', camera_id, 'camera identifier'),
             ('CAMERA', camera_device_id, 'camera model and serial number'),
             ('CAMSWVER', software_version, 'camera server software version'),
-            ('CAMDRV', frame['camera_driver'], ''),
-            ('CAMSDK', frame['camera_library'], 'EPIX SDK version'),
+            ('CAMSDK', frame['camera_library'], ''),
             ('CAMFPGA', frame['fpga_version'], 'camera FPGA firmware version'),
             ('CAMMICRO', frame['micro_version'], 'camera microcontroller firmware version'),
             ('CAMGRAB', frame['grabber_model'], 'camera frame grabber model'),
-            ('CAMBDATE', frame['camera_build_date'], 'camera build date'),
-            ('CAMBCODE', frame['camera_build_code'], 'camera build code'),
             ('CAM-TEMP', round(frame['sensor_temperature'], 2),
              '[deg c] sensor temperature at end of exposure'),
             ('CAM-PCBT', round(frame['pcb_temperature'], 2),
@@ -101,9 +99,9 @@ def output_process(process_queue, processing_framebuffer, processing_framebuffer
             ('TEMP-LCK', frame['cooler_mode'] == CoolerMode.Locked, 'cmos temperature is locked to set point'),
             ('CAM-XBIN', 1, '[px] x binning'),
             ('CAM-YBIN', 1, '[px] y binning'),
-            ('CAM-WIND', f'[1:{frame["data_width"]},1:{frame["data_height"]}',
+            ('CAM-WIND', f'[1:{frame["data_width"]},1:{frame["data_height"]}]',
              '[x1:x2,y1:y2] readout region (detector coords)'),
-            ('IMAG-RGN', f'[1:{frame["data_width"]},1:{frame["data_height"]}',
+            ('IMAG-RGN', f'[1:{frame["data_width"]},1:{frame["data_height"]}]',
              '[x1:x2,y1:y2] image region (image coords)'),
             ('FIELD', frame['field'], 'frame count since camera initialization'),
             ('EXPCNT', frame['exposure_count'], 'running exposure count since EXPCREF'),

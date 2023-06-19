@@ -24,6 +24,13 @@ import Pyro4
 from warwick.observatory.common import TFmt
 from warwick.observatory.camera.raptor import CommandStatus, CameraStatus, CoolerMode, Config
 
+# Fix terminal coloring on Windows clients
+try:
+    import colorama
+    colorama.init()
+except ImportError:
+    pass
+
 SCRIPT_NAME = os.path.basename(sys.argv[0])
 sys.excepthook = Pyro4.util.excepthook
 
@@ -71,7 +78,7 @@ def status(config, *_):
                 print(f'   Acquiring {TFmt.Bold}UNTIL STOPPED{TFmt.Clear}')
 
         print(f'   Temperature is {TFmt.Bold}{data["sensor_temperature"]:.0f}\u00B0C{TFmt.Clear}' +
-              CoolerMode.label(data['cooler_mode'], True) + ')')
+              ' (' + CoolerMode.label(data['cooler_mode'], True) + ')')
 
         if data['cooler_setpoint'] is not None:
             print(f'   Temperature set point is {TFmt.Bold}{data["cooler_setpoint"]:.0f}\u00B0C{TFmt.Clear}')

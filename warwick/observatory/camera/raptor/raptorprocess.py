@@ -15,7 +15,7 @@
 # along with raptor-camd.  If not, see <http://www.gnu.org/licenses/>.
 
 """Helper process for interfacing with the EPIX SDK"""
-
+import math
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-return-statements
@@ -51,7 +51,7 @@ class ManufacturerData(Structure):
         ("build_day", c_uint8),
         ("build_month", c_uint8),
         ("build_year", c_uint8),
-        ("build_code", 5 * c_uint8),
+        ("build_code", 5 * c_char),
         ("adc_cal_0", c_uint16.__ctype_le__),
         ("adc_cal_40", c_uint16.__ctype_le__),
         ("dac_cal_0", c_uint16.__ctype_le__),
@@ -69,14 +69,11 @@ class RaptorInterface:
         self._xclib = None
         self._lock = threading.Lock()
 
-        self._camera_driver = ''
         self._camera_library = ''
         self._grabber_model = ''
         self._micro_version = ''
         self._fpga_version = ''
         self._camera_serial = ''
-        self._camera_build_date = ''
-        self._camera_build_code = ''
         self._adc_slope = 0
         self._adc_offset = 0
         self._dac_slope = 0
@@ -84,7 +81,6 @@ class RaptorInterface:
         self._readout_time = 0
         self._readout_width = 0
         self._readout_height = 0
-        self._timestamp_units = 0
 
         self._cooler_mode = CoolerMode.Unknown
         self._cooler_setpoint = config.cooler_setpoint
@@ -170,7 +166,6 @@ class RaptorInterface:
             chk ^= b
 
         send = data + bytes([0x50, chk])
-        print('    sending', format_hex(send))
 
         ret = self._xclib.pxd_serialWrite(1, 0, send, len(send))
         if ret < 0:
@@ -185,7 +180,6 @@ class RaptorInterface:
                 if ret != response_length + 2:
                     raise Exception('failed to read command response')
 
-                print('    received', format_hex(response.raw))
                 # Validate the ACK and checksum
                 if response.raw[-2] != 0x50:
                     raise Exception(f'unexpected ACK value 0x{response.raw[-2]:02x} != 0x50')
@@ -208,14 +202,14 @@ class RaptorInterface:
         try:
             with self._lock:
                 # Set exposure time
-                exp = int(self._exposure_time * 1e6).to_bytes(4, 'big')
+                exp = int(self._exposure_time * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xEE' + exp[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xEF' + exp[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xF0' + exp[2:3])
                 self._serial_command(b'\x53\x00\x03\x01\xF1' + exp[3:4])
 
                 # Set frame period
-                period = int((self._exposure_time + self._readout_time) * 1e6).to_bytes(4, 'big')
+                period = int((self._exposure_time + self._readout_time) * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xDD' + period[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xDE' + period[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xDF' + period[2:3])
@@ -244,8 +238,9 @@ class RaptorInterface:
             with self._lock:
                 last_field = self._xclib.pxd_capturedFieldCount(1)
                 # Queue all available buffers to start sequence
-                for i in range(framebuffer_slots):
-                    self._xclib.pxd_quLive(1, i)
+                # TODO: Extract to a config param
+                for i in range(10):
+                    self._xclib.pxd_quLive(1, i + 1)
 
             while not self._stop_acquisition and not self._processing_stop_signal.value:
                 self._sequence_exposure_start_time = Time.now()
@@ -260,6 +255,13 @@ class RaptorInterface:
                         break
                     time.sleep(0.001)
 
+                last_field = field
+
+                # buffersSysTicks2 API doesn't seem to return
+                # sensible results, so just take the system time...
+                # TODO: Fix this!
+                read_end_time = Time.now()
+
                 if self._stop_acquisition or self._processing_stop_signal.value:
                     # Return unused slot back to the queue to simplify cleanup
                     self._processing_framebuffer_offsets.put(framebuffer_offset)
@@ -267,11 +269,11 @@ class RaptorInterface:
 
                 buffer = self._xclib.pxd_capturedBuffer(1)
                 field = self._xclib.pxd_buffersFieldCount(1, buffer)
-                ts_bytes = (c_uint32 * 2)()
-                self._xclib.pxd_buffersSysTicks2(1, buffer, ts_bytes)
-                ts = int.from_bytes(ts_bytes, byteorder='little', signed=False) * self._timestamp_units
-                self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
-                                           cdata, self._readout_width * self._readout_height, 'GREY')
+                ret = self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
+                                                 cdata, self._readout_width * self._readout_height, b'GREY')
+                if ret < 0:
+                    print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
+
                 self._xclib.pxd_quLive(1, buffer)
 
                 self._processing_queue.put({
@@ -279,22 +281,18 @@ class RaptorInterface:
                     'data_width': self._readout_width,
                     'data_height': self._readout_height,
                     'exposure': float(self._exposure_time),
-                    'frameperiod': period,
-                    'timestamp': Time(ts, format='unix'),
+                    'frameperiod': self._exposure_time + self._readout_time,
                     'field': field,
                     'readout_time': self._readout_time,
-                    'read_end_time': Time.now(),
+                    'read_end_time': read_end_time,
                     'cooler_mode': self._cooler_mode,
                     'cooler_setpoint': self._cooler_setpoint,
                     'sensor_temperature': self._sensor_temperature,
                     'pcb_temperature': self._pcb_temperature,
-                    'camera_driver': self._camera_driver,
                     'camera_library': self._camera_library,
                     'grabber_model': self._grabber_model,
                     'micro_version': self._micro_version,
                     'fpga_version': self._fpga_version,
-                    'camera_build_date': self._camera_build_date,
-                    'camera_build_code': self._camera_build_code,
                     'exposure_count': self._exposure_count,
                     'exposure_count_reference': self._exposure_count_reference
                 })
@@ -305,6 +303,8 @@ class RaptorInterface:
                 # Continue exposure sequence?
                 if 0 < self._sequence_frame_limit <= self._sequence_frame_count:
                     self._stop_acquisition = True
+        except Exception as e:
+            print(e)
         finally:
             with self._lock:
                 self._xclib.pxd_goAbortLive(1)
@@ -338,21 +338,26 @@ class RaptorInterface:
                 self._xclib = CDLL('/usr/local/xclib/lib/xclib_x86_64.so')
             # pylint: enable=import-outside-toplevel
 
+            self._xclib.pxd_PIXCIopen.argtypes = [c_char_p, c_char_p, c_char_p]
             self._xclib.pxd_serialWrite.argtypes = [c_int, c_int, POINTER(c_char), c_int]
             self._xclib.pxd_serialConfigure.argtypes = [
                 c_int, c_int, c_double, c_int, c_int, c_int, c_int, c_int, c_int]
+            self._xclib.pxd_readushort.argtypes = [
+                c_int, c_int, c_int, c_int, c_int, c_int, c_void_p, c_int, c_char_p]
             self._xclib.pxd_mesgErrorCode.restype = c_char_p
             self._xclib.pxd_infoDriverId.restype = c_char_p
             self._xclib.pxd_infoLibraryId.restype = c_char_p
 
             try:
-                ret = self._xclib.pxd_PIXCIopen(None, None, None)
+                # TODO: Extract to a config param
+                ret = self._xclib.pxd_PIXCIopen(f'-CQ 10'.encode('ascii'),
+                                                None,
+                                                self._config.camera_config_path.encode('ascii'))
                 if ret != 0:
                     print(f'Failed to open PIXCI: {self._xclib.pxd_mesgErrorCode(ret)}')
                     return 1
 
-                self._camera_driver = self._xclib.pxd_infoDriverId(1)
-                self._camera_library = self._xclib.pxd_infoLibraryId(1)
+                self._camera_library = self._xclib.pxd_infoLibraryId(1).decode('ascii')
                 grabber_model = self._xclib.pxd_infoModel(1)
                 if grabber_model == 0x0030:
                     self._grabber_model = 'PIXCI_E8'
@@ -415,13 +420,12 @@ class RaptorInterface:
                                     raise Exception('failed to read ignored bytes')
                                 break
 
-                            if Time.now() - wait_start > 1 * u.sec:
+                            if Time.now() - wait_start > 1 * u.s:
                                 raise Exception('timeout while waiting for ignored bytes')
 
                             time.sleep(0.001)
 
                     if fpga_booted:
-                        print('fpga has booted')
                         break
 
                 # Enable command ACK, checksum, EEPROM access
@@ -430,24 +434,24 @@ class RaptorInterface:
                 ret = self._serial_command(b'\x56', 2)
                 self._micro_version = f'{ret[0]}.{ret[1]}'
 
+                # Wait for FPGA to load NUC tables
+                time.sleep(5.)
+
                 major = self._serial_command(b'\x53\x01\x03\x01\x05\x7E', 1)[0]
                 minor = self._serial_command(b'\x53\x01\x03\x01\x05\x7F', 1)[0]
                 self._fpga_version = f'{major:d}.{minor:d}'
 
                 data = self._serial_command(b'\x53\x05\x05\x12\x03\x00\x00\x00', 18)
-                data = ManufacturerData.from_buffer(data)
+                data = ManufacturerData.from_buffer_copy(data)
 
                 self._camera_serial = f'{data.serial}'
                 if data.serial != self._config.camera_serial:
                     print(f'Unknown camera serial: {data.serial} != {self._config.camera_serial}')
                     return CommandStatus.Failed
 
-                self._camera_build_code = data.build_code
-                self._camera_build_date = f'20{data.build_year:02d}-{data.build_month:02d}-{data.build_day:02d}'
                 self._adc_slope = 40.0 / (data.adc_cal_40 - data.adc_cal_0)
                 self._adc_offset = -self._adc_slope * data.adc_cal_0
-
-                self._dac_slope = (data.dac_cal40 - data.dac_cal_0) / 40.0
+                self._dac_slope = (data.dac_cal_40 - data.dac_cal_0) / 40.0
                 self._dac_offset = data.dac_cal_0
 
                 # Disable EEPROM access
@@ -457,7 +461,9 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\x00\x00')
 
                 # Disable non-uniformity corrections
-                self._serial_command(b'\x53\x00\x03\x01\xF9\x40')
+                # NOTE: undocumented bits 2 and 3 must be set
+                # to 1 or we don't get any images out!
+                self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
 
                 # Set digital gain to minimum value (256)
                 self._serial_command(b'\x53\x00\x03\x01\xC6\x01')
@@ -465,7 +471,7 @@ class RaptorInterface:
 
                 # Set Low Gain mode
                 self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
-                self._readout_time = 0.007511
+                self._readout_time = 0.014
 
                 # Set exposure time to 0
                 self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
@@ -474,7 +480,7 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xF1\x00')
 
                 # Enable long-exposure mode with internal triggering
-                self._serial_command(b'\x53\x00\x03\x01\xF2\x1c')
+                self._serial_command(b'\x53\x00\x03\x01\xF2\x1C')
 
                 # Enable cooling
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
@@ -483,18 +489,14 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\x00\x05')
                 self._cooler_setpoint = self._config.cooler_setpoint
 
-                self._readout_width = self._xclib.pxd_imageXdim().value
-                self._readout_height = self._xclib.pxd_imageYdim().value
-
-                ts_units = (c_uint32 * 2)()
-                self._xclib.pxd_infoSysTicksUnits(ts_units)
-                self._timestamp_units = ts_units[0] * 1.0 / ts_units[1]
+                self._readout_width = self._xclib.pxd_imageXdim()
+                self._readout_height = self._xclib.pxd_imageYdim()
 
                 initialized = True
 
                 return CommandStatus.Succeeded
-            except Exception as e:
-                print(e)
+            except Exception:
+                traceback.print_exc(file=sys.stdout)
                 return CommandStatus.Failed
             finally:
                 # Clean up on failure

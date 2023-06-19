@@ -26,7 +26,7 @@ CONFIG_SCHEMA = {
     'additionalProperties': False,
     'required': [
         'daemon', 'pipeline_daemon', 'pipeline_handover_timeout', 'log_name', 'control_machines',
-        'camera_model', 'camera_serial', 'camera_id', 'cooler_setpoint', 'cooler_update_delay',
+        'camera_config_path', 'camera_model', 'camera_serial', 'camera_id', 'cooler_setpoint', 'cooler_update_delay',
         'worker_processes', 'framebuffer_bytes', 'header_card_capacity', 'output_path', 'output_prefix', 'expcount_path'
     ],
     'properties': {
@@ -51,6 +51,9 @@ CONFIG_SCHEMA = {
                 'type': 'string',
                 'machine_name': True
             }
+        },
+        'camera_config_path': {
+            'type': 'string'
         },
         'camera_model': {
             'type': 'string'
@@ -114,6 +117,7 @@ class Config:
         self.pipeline_handover_timeout = config_json['pipeline_handover_timeout']
         self.log_name = config_json['log_name']
         self.control_ips = [getattr(IP, machine) for machine in config_json['control_machines']]
+        self.camera_config_path = config_json['camera_config_path']
         self.camera_model = config_json['camera_model']
         self.camera_serial = config_json['camera_serial']
         self.camera_id = config_json['camera_id']

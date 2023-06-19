@@ -59,7 +59,7 @@ class CameraDaemon:
             Process(target=output_process, daemon=True, args=(
                 self._processing_queue, self._processing_framebuffer, self._processing_framebuffer_offsets,
                 self._processing_stop_signal, config.camera_id, device_id,
-                config.use_gpsbox, config.header_card_capacity, config.output_path, config.log_name,
+                config.header_card_capacity, config.output_path, config.log_name,
                 config.pipeline_daemon_name, config.pipeline_handover_timeout, SOFTWARE_VERSION)).start()
 
     def raptor_command(self, command, oneway=False, **kwargs):
