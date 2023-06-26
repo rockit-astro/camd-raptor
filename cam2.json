@@ -3,7 +3,7 @@
   "pipeline_daemon": "clasp_pipeline",
   "pipeline_handover_timeout": 10,
   "log_name": "raptor_camd@cam2",
-  "control_machines": ["CLASPTCS", "CLASPDAS1"],
+  "control_machines": ["CLASPTCS", "CLASPDAS"],
   "camera_config_path": "/etc/camd/cam2.fmt",
   "camera_model": "Ninox 1280",
   "camera_serial": 10019,
