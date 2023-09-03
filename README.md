@@ -4,8 +4,6 @@
 
 `swir` is a commandline utility for controlling the cameras.
 
-See [Software Infrastructure](https://github.com/warwick-one-metre/docs/wiki/Software-Infrastructure) for an overview of the observatory software architecture and instructions for developing and deploying the code.
-
 ### Configuration
 
 Configuration is read from json files that are installed by default to `/etc/camd`.
@@ -14,11 +12,11 @@ A configuration file is specified when launching the camera server, and the `swi
 The configuration options are:
 ```python
 {
-  "daemon": "localhost_test", # Run the camera server as this daemon. Daemon types are registered in `warwick.observatory.common.daemons`.
+  "daemon": "localhost_test", # Run the camera server as this daemon. Daemon types are registered in `rockit.common.daemons`.
   "pipeline_daemon": "localhost_test2", # The daemon that should be notified to hand over newly saved frames for processing.
   "pipeline_handover_timeout": 10, # The maximum amount of time to wait for the pipeline daemon to accept a newly saved frame. The exposure sequence is aborted if this is exceeded.
   "log_name": "raptor_camd@test", # The name to use when writing messages to the observatory log.
-  "control_machines": ["LocalHost"], # Machine names that are allowed to control (rather than just query) state. Machine names are registered in `warwick.observatory.common.IP`.
+  "control_machines": ["LocalHost"], # Machine names that are allowed to control (rather than just query) state. Machine names are registered in `rockit.common.IP`.
   "cooler_setpoint": -15, # Default temperature for the SWIR sensor.
   "cooler_update_delay": 5, # Amount of time in seconds to wait between querying the camera temperature and cooling status.
   "worker_processes": 3, # Number of processes to use for generating fits images and saving temporary images to disk.
@@ -37,14 +35,14 @@ The first step is to download and install the EPIX Linux SDK from their website.
 
 The automated packaging scripts will push 4 RPM packages to the observatory package repository:
 
-| Package                       | Description                                                                        |
-|-------------------------------|------------------------------------------------------------------------------------|
-| clasp-raptor-data             | Contains the json configuration files for the CLASP instrument.                    |
-| raptor-camera-server          | Contains the `raptor_camd` server and systemd service files for the camera server. |
-| raptor-camera-client          | Contains the `swir` commandline utility for controlling the camera server.         |
-| python3-warwick-raptor-camera | Contains the python module with shared code.                                       |
+| Package                         | Description                                                                        |
+|---------------------------------|------------------------------------------------------------------------------------|
+| rockit-camera-raptor-server     | Contains the `raptor_camd` server and systemd service files for the camera server. |
+| rockit-camera-raptor-client     | Contains the `swir` commandline utility for controlling the camera server.         |
+| rockit-camera-raptor-data-clasp | Contains the json configuration files for the CLASP instrument.                    |
+| python3-rockit-camera-raptor    | Contains the python module with shared code.                                       |
 
-The `raptor-camera-server` and `clasp-raptor-data` packages should be installed on the CLASP DAS machines, then the systemd service should be enabled:
+After installing packages, the systemd service should be enabled:
 ```
 sudo systemctl enable --now raptor_camd.service@<config>
 ```
@@ -57,9 +55,7 @@ sudo firewall-cmd --zone=public --add-port=<port>/tcp --permanent
 sudo firewall-cmd --reload
 ```
 
-where `port` is the port defined in `warwick.observatory.common.daemons` for the daemon specified in the camera config.
-
-The `raptor-camera-client` and `clasp-raptor-config` packages should be installed on the CLASP TCS machine for centralized control.
+where `port` is the port defined in `rockit.common.daemons` for the daemon specified in the camera config.
 
 ### Upgrading Installation
 

@@ -1,21 +1,21 @@
 #
-# This file is part of raptor-camd.
+# This file is part of the Robotic Observatory Control Kit (rockit)
 #
-# raptor-camd is free software: you can redistribute it and/or modify
+# rockit is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# raptor-camd is distributed in the hope that it will be useful,
+# rockit is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with raptor-camd.  If not, see <http://www.gnu.org/licenses/>.
+# along with rockit.  If not, see <http://www.gnu.org/licenses/>.
 
 """Helper process for interfacing with the EPIX SDK"""
-import math
+
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-return-statements
@@ -24,7 +24,7 @@ import math
 # pylint: disable=broad-exception-raised
 # pylint: disable=too-many-nested-blocks
 
-from ctypes import c_char, c_char_p, c_double, c_int, c_uint8, c_uint16, c_uint32, c_void_p
+from ctypes import c_char, c_char_p, c_double, c_int, c_uint8, c_uint16, c_void_p
 from ctypes import create_string_buffer, POINTER, Structure
 import json
 import pathlib
@@ -36,7 +36,7 @@ import traceback
 from astropy.time import Time
 import astropy.units as u
 import Pyro4
-from warwick.observatory.common import log
+from rockit.common import log
 from .constants import CommandStatus, CameraStatus, CoolerMode
 
 
@@ -350,7 +350,7 @@ class RaptorInterface:
 
             try:
                 # TODO: Extract to a config param
-                ret = self._xclib.pxd_PIXCIopen(f'-CQ 10'.encode('ascii'),
+                ret = self._xclib.pxd_PIXCIopen(b'-CQ 10',
                                                 None,
                                                 self._config.camera_config_path.encode('ascii'))
                 if ret != 0:

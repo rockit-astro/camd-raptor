@@ -4,18 +4,23 @@ RPMBUILD = rpmbuild --define "_topdir %(pwd)/build" \
         --define "_srcrpmdir %{_topdir}" \
         --define "_sourcedir %(pwd)"
 
-GIT_VERSION = $(shell git name-rev --name-only --tags --no-undefined HEAD 2>/dev/null || echo git-`git rev-parse --short HEAD`)
-SERVER_VERSION=$(shell awk '/Version:/ { print $$2; }' observatory-raptor-camera-server.spec)
-
 all:
 	mkdir -p build
-	cp raptor_camd raptor_camd.bak
-	awk '{sub("SOFTWARE_VERSION = .*$$","SOFTWARE_VERSION = \"$(SERVER_VERSION) ($(GIT_VERSION))\""); print $0}' raptor_camd.bak > raptor_camd
-	${RPMBUILD} -ba observatory-raptor-camera-server.spec
-	${RPMBUILD} -ba observatory-raptor-camera-client.spec
-	${RPMBUILD} -ba python3-warwick-observatory-raptor-camera.spec
-	${RPMBUILD} -ba clasp-raptor-camera-data.spec
-	mv build/noarch/*.rpm .
-	rm -rf build
-	mv raptor_camd.bak raptor_camd
+	date --utc +%Y%m%d%H%M%S > VERSION
+	${RPMBUILD} --define "_version %(cat VERSION)" -ba rockit-camera-raptor.spec
+	${RPMBUILD} --define "_version %(cat VERSION)" -ba python3-rockit-camera-raptor.spec
 
+	mv build/noarch/*.rpm .
+	rm -rf build VERSION
+
+install:
+	@date --utc +%Y%m%d%H%M%S > VERSION
+	@python3 -m build --outdir .
+	@sudo pip3 install rockit.camera.raptor-$$(cat VERSION)-py3-none-any.whl
+	@rm VERSION
+	@sudo cp raptor_camd swir /bin/
+	@sudo cp raptor_camd@.service /usr/lib/systemd/system/
+	@sudo install -d /etc/camd
+	@echo ""
+	@echo "Installed server and service files."
+	@echo "Now copy the relevant json config files to /etc/camd/"
