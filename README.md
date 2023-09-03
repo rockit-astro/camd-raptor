@@ -2,12 +2,12 @@
 
 `raptor_camd` interfaces with and wraps Raptor Ninox 1280 detectors and exposes them via Pyro.
 
-`swir` is a commandline utility for controlling the cameras.
+The `cam` commandline utility for controlling the cameras is provided by [camd](https://github.com/rockit-astro/camd/).
 
 ### Configuration
 
 Configuration is read from json files that are installed by default to `/etc/camd`.
-A configuration file is specified when launching the camera server, and the `swir` frontend will search for files matching the specified camera id when launched.
+A configuration file is specified when launching the camera server, and the `cam` frontend will search for files matching the specified camera id when launched.
 
 The configuration options are:
 ```python
@@ -33,12 +33,11 @@ The configuration options are:
 
 The first step is to download and install the EPIX Linux SDK from their website.
 
-The automated packaging scripts will push 4 RPM packages to the observatory package repository:
+The automated packaging scripts will push 3 RPM packages to the observatory package repository:
 
 | Package                         | Description                                                                        |
 |---------------------------------|------------------------------------------------------------------------------------|
 | rockit-camera-raptor-server     | Contains the `raptor_camd` server and systemd service files for the camera server. |
-| rockit-camera-raptor-client     | Contains the `swir` commandline utility for controlling the camera server.         |
 | rockit-camera-raptor-data-clasp | Contains the json configuration files for the CLASP instrument.                    |
 | python3-rockit-camera-raptor    | Contains the python module with shared code.                                       |
 
@@ -76,5 +75,5 @@ sudo systemctl restart raptor_camd@<config>
 The camera server and client can be run directly from a git clone:
 ```
 ./raptor_camd test.json
-CAMD_CONFIG_ROOT=. ./swir test status
+CAMD_CONFIG_ROOT=. cam test status
 ```

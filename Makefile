@@ -18,7 +18,7 @@ install:
 	@python3 -m build --outdir .
 	@sudo pip3 install rockit.camera.raptor-$$(cat VERSION)-py3-none-any.whl
 	@rm VERSION
-	@sudo cp raptor_camd swir /bin/
+	@sudo cp raptor_camd /bin/
 	@sudo cp raptor_camd@.service /usr/lib/systemd/system/
 	@sudo install -d /etc/camd
 	@echo ""

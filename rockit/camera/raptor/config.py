@@ -26,6 +26,7 @@ CONFIG_SCHEMA = {
     'additionalProperties': False,
     'required': [
         'daemon', 'pipeline_daemon', 'pipeline_handover_timeout', 'log_name', 'control_machines',
+        'client_commands_module',
         'camera_config_path', 'camera_model', 'camera_serial', 'camera_id', 'cooler_setpoint', 'cooler_update_delay',
         'worker_processes', 'framebuffer_bytes', 'header_card_capacity', 'output_path', 'output_prefix', 'expcount_path'
     ],
@@ -51,6 +52,9 @@ CONFIG_SCHEMA = {
                 'type': 'string',
                 'machine_name': True
             }
+        },
+        'client_commands_module': {
+            'type': 'string'
         },
         'camera_config_path': {
             'type': 'string'

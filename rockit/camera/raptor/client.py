@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # This file is part of the Robotic Observatory Control Kit (rockit)
 #
@@ -15,31 +14,41 @@
 # You should have received a copy of the GNU General Public License
 # along with rockit.  If not, see <http://www.gnu.org/licenses/>.
 
-"""Daemon process for managing one of the cameras"""
+"""client command input handlers"""
 
-import glob
-import os
-import sys
 import Pyro4
 from rockit.common import TFmt
-from rockit.camera.raptor import CommandStatus, CameraStatus, CoolerMode, Config
-
-# Fix terminal coloring on Windows clients
-try:
-    import colorama
-    colorama.init()
-except ImportError:
-    pass
-
-SCRIPT_NAME = os.path.basename(sys.argv[0])
-sys.excepthook = Pyro4.util.excepthook
+from .config import Config
+from .constants import CommandStatus, CameraStatus, CoolerMode
 
 
-def run_command(config_paths, camera_id, command, args):
+def run_client_command(config_path, usage_prefix, args):
     """Prints the message associated with a status code and returns the code"""
-    config = Config(config_paths[camera_id])
+    config = Config(config_path)
+    commands = {
+        'temperature': set_temperature,
+        'exposure': set_exposure,
+        'status': status,
+        'start': start,
+        'stop': stop,
+        'init': initialize,
+        'kill': shutdown,
+    }
+
+    if len(args) == 0 or (args[0] not in commands and args[0] != 'completion'):
+        return print_usage(usage_prefix)
+
+    if args[0] == 'completion':
+        if 'start' in args[-2:]:
+            print('continuous')
+        elif 'temperature' in args[-2:]:
+            print('warm')
+        elif len(args) < 3:
+            print(' '.join(commands))
+        return 0
+
     try:
-        ret = command(config, sorted(config_paths.keys()), args)
+        ret = commands[args[0]](config, usage_prefix, args[1:])
     except KeyboardInterrupt:
         # ctrl-c terminates the running command
         ret = stop(config, args)
@@ -87,7 +96,7 @@ def status(config, *_):
     return 0
 
 
-def set_temperature(config, camera_ids, args):
+def set_temperature(config, usage_prefix, args):
     """Set the camera temperature"""
     if len(args) == 1:
         if args[0] == 'warm':
@@ -96,21 +105,21 @@ def set_temperature(config, camera_ids, args):
             temp = int(args[0])
         with config.daemon.connect() as camd:
             return camd.set_target_temperature(temp)
-    print(f'usage: {SCRIPT_NAME} [{"|".join(camera_ids)}] temperature <degrees>')
+    print(f'usage: {usage_prefix} temperature <degrees>')
     return -1
 
 
-def set_exposure(config, camera_ids, args):
+def set_exposure(config, usage_prefix, args):
     """Set the camera exposure time"""
     if len(args) == 1:
         exposure = float(args[0])
         with config.daemon.connect() as camd:
             return camd.set_exposure(exposure)
-    print(f'usage: {SCRIPT_NAME} [{"|".join(camera_ids)}] exposure <seconds>')
+    print(f'usage: {usage_prefix} exposure <seconds>')
     return -1
 
 
-def start(config, camera_ids, args):
+def start(config, usage_prefix, args):
     """Starts an exposure sequence"""
     if len(args) == 1:
         try:
@@ -121,7 +130,7 @@ def start(config, camera_ids, args):
         except Exception:
             print('error: invalid exposure count:', args[0])
             return -1
-    print(f'usage: {SCRIPT_NAME} [{"|".join(camera_ids)}] start (continuous|<count>)')
+    print(f'usage: {usage_prefix} start (continuous|<count>)')
     return -1
 
 
@@ -144,15 +153,9 @@ def shutdown(config, *_):
         return camd.shutdown()
 
 
-def print_filters(config, _):
-    """Prints a list of selectable filters"""
-    print(' '.join(config.filters))
-    return 0
-
-
-def print_usage(config_paths):
+def print_usage(usage_prefix):
     """Prints the utility help"""
-    print(f'usage: {SCRIPT_NAME} [{"|".join(sorted(config_paths.keys()))}] <command> [<args>]')
+    print(f'usage: {usage_prefix} <command> [<args>]')
     print()
     print('general commands:')
     print('   status       print a human-readable summary of the camera status')
@@ -166,40 +169,3 @@ def print_usage(config_paths):
     print()
 
     return 0
-
-
-if __name__ == '__main__':
-    if 'CAMD_CONFIG_ROOT' in os.environ:
-        config_root = os.environ['CAMD_CONFIG_ROOT']
-    else:
-        config_root = '/etc/camd'
-
-    configs = {os.path.basename(p)[:-5]: p for p in glob.glob(os.path.join(config_root, '*.json'))}
-    if not configs:
-        print('error: no camera configs were found in ' + config_root)
-        print('       run as CAMD_CONFIG_ROOT=/path/to/config/root ' + ' '.join(sys.argv))
-        print('       to specify the configuration root directory')
-        sys.exit(1)
-
-    if len(sys.argv) == 2 and sys.argv[1] == 'list-cameras':
-        print(' '.join(sorted(configs.keys())))
-        sys.exit(0)
-
-    if len(sys.argv) < 3:
-        sys.exit(print_usage(configs))
-
-    commands = {
-        'temperature': set_temperature,
-        'exposure': set_exposure,
-        'status': status,
-        'start': start,
-        'stop': stop,
-        'init': initialize,
-        'kill': shutdown,
-        'list-filters': print_filters
-    }
-
-    if sys.argv[1] not in configs or sys.argv[2] not in commands:
-        sys.exit(print_usage(configs))
-
-    sys.exit(run_command(configs, sys.argv[1], commands[sys.argv[2]], sys.argv[3:]))
