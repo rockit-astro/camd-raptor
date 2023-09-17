@@ -150,7 +150,8 @@ class RaptorInterface:
 
                 high = self._serial_command(b'\x53\x01\x03\x01\x05\x70', 1)[0]
                 low = self._serial_command(b'\x53\x01\x03\x01\x05\x71', 1)[0]
-                self._pcb_temperature = (256 * (high & 0x0F) + low) * self._adc_slope + self._adc_offset
+                self._pcb_temperature = int.from_bytes([(high << 4) + (low >> 4)], byteorder='big', signed=True)
+                self._pcb_temperature += int.from_bytes([low & 0xF], byteorder='big', signed=True) * 0.0625
 
                 if self._cooler_setpoint is not None:
                     delta = abs(self._sensor_temperature - self._cooler_setpoint)
