@@ -202,19 +202,19 @@ class RaptorInterface:
         framebuffer_slots = 0
         try:
             with self._lock:
-                # Set exposure time
-                exp = int(self._exposure_time * 70e6).to_bytes(4, 'big')
-                self._serial_command(b'\x53\x00\x03\x01\xEE' + exp[0:1])
-                self._serial_command(b'\x53\x00\x03\x01\xEF' + exp[1:2])
-                self._serial_command(b'\x53\x00\x03\x01\xF0' + exp[2:3])
-                self._serial_command(b'\x53\x00\x03\x01\xF1' + exp[3:4])
-
                 # Set frame period
                 period = int((self._exposure_time + self._readout_time) * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xDD' + period[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xDE' + period[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xDF' + period[2:3])
                 self._serial_command(b'\x53\x00\x03\x01\xE0' + period[3:4])
+
+                # Set exposure time
+                exp = int(self._exposure_time * 70e6).to_bytes(4, 'big')
+                self._serial_command(b'\x53\x00\x03\x01\xEE' + exp[0:1])
+                self._serial_command(b'\x53\x00\x03\x01\xEF' + exp[1:2])
+                self._serial_command(b'\x53\x00\x03\x01\xF0' + exp[2:3])
+                self._serial_command(b'\x53\x00\x03\x01\xF1' + exp[3:4])
 
             # Prepare the framebuffer offsets
             if not self._processing_framebuffer_offsets.empty():
@@ -239,8 +239,7 @@ class RaptorInterface:
             with self._lock:
                 last_field = self._xclib.pxd_capturedFieldCount(1)
                 # Queue all available buffers to start sequence
-                # TODO: Extract to a config param
-                for i in range(10):
+                for i in range(8):
                     self._xclib.pxd_quLive(1, i + 1)
 
             while not self._stop_acquisition and not self._processing_stop_signal.value:
@@ -350,8 +349,7 @@ class RaptorInterface:
             self._xclib.pxd_infoLibraryId.restype = c_char_p
 
             try:
-                # TODO: Extract to a config param
-                ret = self._xclib.pxd_PIXCIopen(b'-CQ 10',
+                ret = self._xclib.pxd_PIXCIopen(b'-CQ 8',
                                                 None,
                                                 self._config.camera_config_path.encode('ascii'))
                 if ret != 0:
@@ -461,20 +459,20 @@ class RaptorInterface:
                 # Disable automatic gain calculation mode
                 self._serial_command(b'\x53\x00\x03\x01\x00\x00')
 
+                # Set digital gain to minimum value (256)
+                self._serial_command(b'\x53\x00\x03\x01\xC6\x01')
+                self._serial_command(b'\x53\x00\x03\x01\xC7\x00')
+
+                # Switch to low gain mode
+                self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
+                self._readout_time = 0.008
+
                 # Disable non-uniformity corrections
                 # NOTE: undocumented bits 2 and 3 must be set
                 # to 1 or we don't get any images out!
                 self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
 
-                # Set digital gain to minimum value (256)
-                self._serial_command(b'\x53\x00\x03\x01\xC6\x01')
-                self._serial_command(b'\x53\x00\x03\x01\xC7\x00')
-
-                # Set Low Gain mode
-                self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
-                self._readout_time = 0.014
-
-                # Set exposure time to 0
+                # Exposure time to 0 before enabling long exposures
                 self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xEF\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xF0\x00')
@@ -482,6 +480,13 @@ class RaptorInterface:
 
                 # Enable long-exposure mode with internal triggering
                 self._serial_command(b'\x53\x00\x03\x01\xF2\x1C')
+
+                # Set exposure time to 1 second while idling
+                self._serial_command(b'\x53\x00\x03\x01\xEE\x04')
+                self._serial_command(b'\x53\x00\x03\x01\xEF\x2C')
+                self._serial_command(b'\x53\x00\x03\x01\xF0\x1D')
+                self._serial_command(b'\x53\x00\x03\x01\xF1\x80')
+                self._exposure_time = 1
 
                 # Enable cooling
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
