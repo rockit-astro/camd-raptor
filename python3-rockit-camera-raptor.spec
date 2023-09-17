@@ -3,7 +3,7 @@ Version:        %{_version}
 Release:        1
 License:        GPL3
 Summary:        Common code for the Raptor camera daemon
-Url:            https://github.com/rockit-astro/raptor-camd
+Url:            https://github.com/rockit-astro/camd-raptor
 BuildArch:      noarch
 BuildRequires:  python3-devel
 
