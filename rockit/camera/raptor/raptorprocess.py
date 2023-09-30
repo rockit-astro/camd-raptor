@@ -24,7 +24,7 @@
 # pylint: disable=broad-exception-raised
 # pylint: disable=too-many-nested-blocks
 
-from ctypes import c_char, c_char_p, c_double, c_int, c_uint8, c_uint16, c_void_p
+from ctypes import byref, c_char, c_char_p, c_double, c_int, c_uint8, c_uint16, c_uint64, c_void_p
 from ctypes import create_string_buffer, POINTER, Structure
 import json
 import pathlib
@@ -257,11 +257,6 @@ class RaptorInterface:
 
                 last_field = field
 
-                # buffersSysTicks2 API doesn't seem to return
-                # sensible results, so just take the system time...
-                # TODO: Fix this!
-                read_end_time = Time.now()
-
                 if self._stop_acquisition or self._processing_stop_signal.value:
                     # Return unused slot back to the queue to simplify cleanup
                     self._processing_framebuffer_offsets.put(framebuffer_offset)
@@ -274,7 +269,17 @@ class RaptorInterface:
                 if ret < 0:
                     print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
 
-                self._xclib.pxd_quLive(1, buffer)
+                # buffersSysTicks2 API doesn't seem to return
+                # sensible results, so just take the system time...
+                # TODO: Fix this!
+                read_end_time = Time.now()
+                ret = self._xclib.pxd_buffersSysTicks2(1, buffer, )
+                if ret < 0:
+                    print(f'Failed to read capture timestamp: {self._xclib.pxd_mesgErrorCode(ret)}')
+
+                ticks = c_uint64()
+                self._xclib.pxd_quLive(1, buffer, byref(ticks))
+                print('ticks', ticks.value, read_end_time, read_end_time.unix)
 
                 self._processing_queue.put({
                     'data_offset': framebuffer_offset,
@@ -349,7 +354,11 @@ class RaptorInterface:
             self._xclib.pxd_infoLibraryId.restype = c_char_p
 
             try:
-                ret = self._xclib.pxd_PIXCIopen(b'-CQ 8',
+                # Settings:
+                #   CQ 8: allocate 8 frame buffers
+                #   TI 5: use high-resolution system timing
+                #   MU 109: clear frame buffer memory on init and format change
+                ret = self._xclib.pxd_PIXCIopen(b'-CQ 8 -TI 5 -MU 109',
                                                 None,
                                                 self._config.camera_config_path.encode('ascii'))
                 if ret != 0:
