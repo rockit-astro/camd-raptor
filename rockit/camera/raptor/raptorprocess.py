@@ -238,7 +238,7 @@ class RaptorInterface:
                     break
 
             with self._lock:
-                last_field = self._xclib.pxd_capturedFieldCount(1)
+                last_buffer = self._xclib.pxd_capturedBuffer(1)
                 # Queue all available buffers to start sequence
                 for i in range(8):
                     self._xclib.pxd_quLive(1, i + 1)
@@ -251,8 +251,8 @@ class RaptorInterface:
 
                 # Wait for frame to become available
                 while True:
-                    field = self._xclib.pxd_capturedFieldCount(1)
-                    if field != last_field or self._stop_acquisition or self._processing_stop_signal.value:
+                    buffer = self._xclib.pxd_capturedBuffer(1)
+                    if buffer != last_buffer or self._stop_acquisition or self._processing_stop_signal.value:
                         break
                     time.sleep(0.001)
 
@@ -263,7 +263,6 @@ class RaptorInterface:
                     self._processing_framebuffer_offsets.put(framebuffer_offset)
                     break
 
-                buffer = self._xclib.pxd_capturedBuffer(1)
                 field = self._xclib.pxd_buffersFieldCount(1, buffer)
                 ret = self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
                                                  cdata, self._readout_width * self._readout_height, b'GREY')
