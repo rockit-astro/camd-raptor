@@ -24,7 +24,7 @@
 # pylint: disable=broad-exception-raised
 # pylint: disable=too-many-nested-blocks
 
-from ctypes import c_char, c_char_p, c_double, c_int, c_uint8, c_uint16, c_void_p
+from ctypes import byref, c_char, c_char_p, c_double, c_int, c_uint8, c_uint16, c_uint64, c_void_p
 from ctypes import create_string_buffer, POINTER, Structure
 import json
 import pathlib
@@ -68,6 +68,7 @@ class RaptorInterface:
         self._handle = c_void_p()
         self._xclib = None
         self._lock = threading.Lock()
+        self._tick_origin = None
 
         self._camera_library = ''
         self._grabber_model = ''
@@ -255,12 +256,7 @@ class RaptorInterface:
                         break
                     time.sleep(0.001)
 
-                last_field = field
-
-                # buffersSysTicks2 API doesn't seem to return
-                # sensible results, so just take the system time...
-                # TODO: Fix this!
-                read_end_time = Time.now()
+                last_buffer = buffer
 
                 if self._stop_acquisition or self._processing_stop_signal.value:
                     # Return unused slot back to the queue to simplify cleanup
@@ -275,6 +271,17 @@ class RaptorInterface:
                     print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
 
                 self._xclib.pxd_quLive(1, buffer)
+
+                if platform.system() == 'Windows':
+                    ticks = c_uint64()
+                    ret = self._xclib.pxd_buffersSysTicks2(1, buffer, byref(ticks))
+                    if ret < 0:
+                        print(f'Failed to read frame timestamp: {self._xclib.pxd_mesgErrorCode(ret)}')
+                        read_end_time = Time.now()
+                    else:
+                        read_end_time = self._tick_origin + 100 * ticks.value * u.nanosecond
+                else:
+                    read_end_time = Time.now()
 
                 self._processing_queue.put({
                     'data_offset': framebuffer_offset,
@@ -329,10 +336,22 @@ class RaptorInterface:
         print('initializing frame grabber')
         initialized = False
         with self._lock:
+            pixci_args = b'-CQ 8'
             # pylint: disable=import-outside-toplevel
             if platform.system() == 'Windows':
                 from ctypes import WinDLL
                 self._xclib = WinDLL(r'C:\Program Files\EPIX\XCLIB\lib\xclibw64.dll')
+
+                # Timestamp frames using the "KeQueryInterruptTime" kernel counter
+                # "KeQuerySystemTimePrecise" (TI = 5) does not appear to work!
+                pixci_args += b' -TI 3'
+
+                # The interrupt time counter increments in 100 nanosecond intervals
+                # since system boot
+                ticks = c_uint64()
+                origin = Time.now()
+                WinDLL('kernelbase').QueryInterruptTime(byref(ticks))
+                self._tick_origin = origin - 100 * ticks.value * u.nanosecond
             else:
                 from ctypes import CDLL
                 self._xclib = CDLL('/usr/local/xclib/lib/xclib_x86_64.so')
@@ -349,7 +368,7 @@ class RaptorInterface:
             self._xclib.pxd_infoLibraryId.restype = c_char_p
 
             try:
-                ret = self._xclib.pxd_PIXCIopen(b'-CQ 8',
+                ret = self._xclib.pxd_PIXCIopen(pixci_args,
                                                 None,
                                                 self._config.camera_config_path.encode('ascii'))
                 if ret != 0:
