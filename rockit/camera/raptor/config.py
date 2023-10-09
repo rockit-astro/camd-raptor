@@ -43,6 +43,10 @@ CONFIG_SCHEMA = {
             'type': 'number',
             'min': 0
         },
+        'chiller_daemon': {  # optional
+            'type': 'string',
+            'daemon_name': True
+        },
         'log_name': {
             'type': 'string',
         },
@@ -120,6 +124,9 @@ class Config:
         self.pipeline_daemon_name = config_json['pipeline_daemon']
         self.pipeline_handover_timeout = config_json['pipeline_handover_timeout']
         self.log_name = config_json['log_name']
+        self.chiller_daemon = None
+        if 'chiller_daemon' in config_json:
+            self.chiller_daemon = getattr(daemons, config_json['chiller_daemon'])
         self.control_ips = [getattr(IP, machine) for machine in config_json['control_machines']]
         self.camera_config_path = config_json['camera_config_path']
         self.camera_model = config_json['camera_model']

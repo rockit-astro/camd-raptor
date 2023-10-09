@@ -83,6 +83,7 @@ class RaptorInterface:
         self._readout_width = 0
         self._readout_height = 0
 
+        self._chiller_error = False
         self._cooler_mode = CoolerMode.Unknown
         self._cooler_setpoint = config.cooler_setpoint
         self._sensor_temperature = 0
@@ -161,6 +162,16 @@ class RaptorInterface:
                     self._cooler_mode = CoolerMode.Off
         except:
             self._cooler_mode = CoolerMode.Unknown
+
+        if self._config.chiller_daemon and self._cooler_mode != CoolerMode.Off:
+            try:
+                with self._config.chiller_daemon.connect() as chiller:
+                    chiller.notify_camera_cooling_active()
+                self._chiller_error = False
+            except Exception:
+                if not self._chiller_error:
+                    log.error(self._config.log_name, 'Failed to notify chiller daemon of cooling status')
+                    self._chiller_error = True
 
     def _serial_command(self, data, response_length=0, timeout=5):
         chk = 0x50
@@ -510,7 +521,10 @@ class RaptorInterface:
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xFB' + setpoint[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xFA' + setpoint[1:2])
-                self._serial_command(b'\x53\x00\x03\x01\x00\x05')
+
+                # Enable fan cooling if not connected to a chiller
+                self._serial_command(b'\x53\x00\x03\x01\x00' + b'\x01' if self._config.chiller_daemon else b'\x05')
+
                 self._cooler_setpoint = self._config.cooler_setpoint
 
                 self._readout_width = self._xclib.pxd_imageXdim()
@@ -547,7 +561,9 @@ class RaptorInterface:
 
                     # Enable TEC and fan if needed
                     if self._cooler_setpoint is None:
-                        self._serial_command(b'\x53\x00\x03\x01\x00\x05')
+                        # Enable fan cooling if not connected to a chiller
+                        self._serial_command(b'\x53\x00\x03\x01\x00' +
+                                             b'\x01' if self._config.chiller_daemon else b'\x05')
                 else:
                     # Disable TEC and fan if needed
                     if self._cooler_setpoint is not None:
