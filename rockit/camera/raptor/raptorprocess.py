@@ -494,7 +494,7 @@ class RaptorInterface:
 
                 # Switch to low gain mode
                 self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
-                self._readout_time = 0.008
+                self._readout_time = 0.015
 
                 # Disable non-uniformity corrections
                 # NOTE: undocumented bits 2 and 3 must be set
