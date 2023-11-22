@@ -523,7 +523,7 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xFA' + setpoint[1:2])
 
                 # Enable fan cooling if not connected to a chiller
-                self._serial_command(b'\x53\x00\x03\x01\x00' + b'\x01' if self._config.chiller_daemon else b'\x05')
+                self._serial_command(b'\x53\x00\x03\x01\x00' + (b'\x01' if self._config.chiller_daemon else b'\x05'))
 
                 self._cooler_setpoint = self._config.cooler_setpoint
 
