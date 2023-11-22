@@ -14,7 +14,7 @@
   "framebuffer_bytes": 44564480,
   "header_card_capacity": 144,
   "camera_id": "CAM2",
-  "output_path": "D:/data/incoming/",
+  "output_path": "Z:/",
   "output_prefix": "cam2",
-  "expcount_path": "D:/cam2-counter.json"
+  "expcount_path": "C:/Users/ops/src/raptor-camd/cam2-counter.json"
 }
