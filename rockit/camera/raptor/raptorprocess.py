@@ -456,7 +456,7 @@ class RaptorInterface:
                     if fpga_booted:
                         break
 
-                # Enable command ACK, checksum, EEPROM access
+                # Enable command ACK, checksum, NVM access
                 self._serial_command(b'\x4F\x53')
 
                 ret = self._serial_command(b'\x56', 2)
@@ -482,9 +482,6 @@ class RaptorInterface:
                 self._dac_slope = (data.dac_cal_40 - data.dac_cal_0) / 40.0
                 self._dac_offset = data.dac_cal_0
 
-                # Disable EEPROM access
-                self._serial_command(b'\x4F\x52')
-
                 # Disable automatic gain calculation mode
                 self._serial_command(b'\x53\x00\x03\x01\x00\x00')
 
@@ -497,8 +494,6 @@ class RaptorInterface:
                 self._readout_time = 0.015
 
                 # Disable non-uniformity corrections
-                # NOTE: undocumented bits 2 and 3 must be set
-                # to 1 or we don't get any images out!
                 self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
 
                 # Exposure time to 0 before enabling long exposures
