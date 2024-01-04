@@ -172,6 +172,39 @@ class CameraDaemon:
             return self.raptor_command('exposure', exposure=seconds, quiet=quiet)
 
     @Pyro4.expose
+    def dump_nvm(self, path, quiet=False):
+        if not pyro_client_matches(self._config.control_ips):
+            return CommandStatus.InvalidControlIP
+
+        with TryLock(self._command_lock) as success:
+            if not success:
+                return CommandStatus.Blocked
+
+            return self.raptor_command('dump_nvm', path=path, quiet=quiet)
+
+    @Pyro4.expose
+    def store_nvm(self, quiet=False):
+        if not pyro_client_matches(self._config.control_ips):
+            return CommandStatus.InvalidControlIP
+
+        with TryLock(self._command_lock) as success:
+            if not success:
+                return CommandStatus.Blocked
+
+            return self.raptor_command('store_nvm', quiet=quiet)
+
+    @Pyro4.expose
+    def erase_nvm(self, quiet=False):
+        if not pyro_client_matches(self._config.control_ips):
+            return CommandStatus.InvalidControlIP
+
+        with TryLock(self._command_lock) as success:
+            if not success:
+                return CommandStatus.Blocked
+
+            return self.raptor_command('erase_nvm', quiet=quiet)
+
+    @Pyro4.expose
     def configure(self, params, quiet=False):
         """Set camera configuration to the requested state
            params should be a dictionary with the following keys:

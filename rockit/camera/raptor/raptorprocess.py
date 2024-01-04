@@ -630,6 +630,42 @@ class RaptorInterface:
 
         return CommandStatus.Succeeded
 
+    def dump_nvm(self, path, quiet):
+        if self.is_acquiring:
+            return CommandStatus.CameraNotIdle
+
+        with self._lock:
+            data = self._serial_command(b'\x53\x05\x05\x64\x03\x00\x20\x00', 100)
+            data += self._serial_command(b'\x53\x05\x05\x64\x03\x00\x20\x64', 100)
+            data += self._serial_command(b'\x53\x05\x05\x37\x03\x00\x20\x64', 55)
+        print(' '.join([f'0x{x:02X}' for x in data]))
+
+        with open(path, 'wb') as f:
+            f.write(data)
+        print('nvm saved to ' + path)
+
+        return CommandStatus.Succeeded
+
+    def store_nvm(self, quiet):
+        if self.is_acquiring:
+            return CommandStatus.CameraNotIdle
+
+        with self._lock:
+            self._serial_command(b'\x53\x00\x03\x01\xFF\xA6')
+            time.sleep(5)
+
+        return CommandStatus.Succeeded
+
+    def erase_nvm(self, quiet):
+        if self.is_acquiring:
+            return CommandStatus.CameraNotIdle
+
+        with self._lock:
+            self._serial_command(b'\x53\x00\x03\x01\xFF\xA7')
+            time.sleep(5)
+
+        return CommandStatus.Succeeded
+
     @Pyro4.expose
     def start_sequence(self, count, quiet):
         """Starts an exposure sequence with a set number of frames, or 0 to run until stopped"""
@@ -750,6 +786,12 @@ def raptor_process(camd_pipe, config, processing_queue, processing_framebuffer, 
                     camd_pipe.send(cam.stop_sequence(args['quiet']))
                 elif command == 'status':
                     camd_pipe.send(cam.report_status())
+                elif command == 'dump_nvm':
+                    camd_pipe.send(cam.dump_nvm(args['path'], args['quiet']))
+                elif command == 'store_nvm':
+                    camd_pipe.send(cam.store_nvm(args['quiet']))
+                elif command == 'erase_nvm':
+                    camd_pipe.send(cam.erase_nvm(args['quiet']))
                 elif command == 'shutdown':
                     break
                 else:
