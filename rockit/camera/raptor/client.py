@@ -31,6 +31,7 @@ def run_client_command(config_path, usage_prefix, args):
         'status': status,
         'start': start,
         'stop': stop,
+        'nvm': nvm,
         'init': initialize,
         'kill': shutdown,
     }
@@ -43,6 +44,8 @@ def run_client_command(config_path, usage_prefix, args):
             print('continuous')
         elif 'temperature' in args[-2:]:
             print('warm')
+        elif 'nvm' in args[-2:]:
+            print('dump store erase')
         elif len(args) < 3:
             print(' '.join(commands))
         return 0
@@ -64,6 +67,23 @@ def run_client_command(config_path, usage_prefix, args):
         print(CommandStatus.message(ret))
 
     return ret
+
+
+def nvm(config, usage_prefix, args):
+    if len(args) == 2:
+        if args[0] == 'dump':
+            with config.daemon.connect() as camd:
+                return camd.dump_nvm(args[1])
+
+    elif len(args) == 1:
+        with config.daemon.connect(timeout=10) as camd:
+            if args[0] == 'store':
+                return camd.store_nvm()
+            elif args[0] == 'erase':
+                return camd.erase_nvm()
+
+    print(f'usage: {usage_prefix} nvm (dump|store|erase)')
+    return -1
 
 
 def status(config, *_):
