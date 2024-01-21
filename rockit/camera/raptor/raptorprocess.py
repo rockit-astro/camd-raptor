@@ -35,6 +35,7 @@ import time
 import traceback
 from astropy.time import Time
 import astropy.units as u
+import numpy as np
 import Pyro4
 from rockit.common import log
 from .constants import CommandStatus, CameraStatus, CoolerMode
@@ -89,7 +90,7 @@ class RaptorInterface:
         self._sensor_temperature = 0
         self._pcb_temperature = 0
 
-        self._exposure_time = 0
+        self._exposure_time = 1
 
         # Limit and number of frames acquired during the next sequence
         # Set to 0 to run continuously
@@ -214,16 +215,19 @@ class RaptorInterface:
         framebuffer_slots = 0
         try:
             with self._lock:
-                # Set frame period
-                exposure_time = min(1.0, self._exposure_time)
+                # Low gain mode has a maximum exposure time of 1.048.57ms
+                # Split longer requested exposures into multiple sub-exposures
+                subexposures = 1
+                while self._exposure_time / subexposures > 1.048:
+                    subexposures += 1
 
+                exposure_time = self._exposure_time / subexposures
                 period = int((exposure_time + self._readout_time) * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xDD' + period[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xDE' + period[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xDF' + period[2:3])
                 self._serial_command(b'\x53\x00\x03\x01\xE0' + period[3:4])
 
-                # Set exposure time
                 exp = int(exposure_time * 1e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xEE' + exp[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xEF' + exp[1:2])
@@ -299,6 +303,7 @@ class RaptorInterface:
                     'data_offset': framebuffer_offset,
                     'data_width': self._readout_width,
                     'data_height': self._readout_height,
+                    'data_depth': subexposures,
                     'exposure': float(self._exposure_time),
                     'frameperiod': self._exposure_time + self._readout_time,
                     'field': field,
