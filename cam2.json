@@ -11,7 +11,7 @@
   "cooler_setpoint": -15,
   "cooler_update_delay": 5,
   "worker_processes": 3,
-  "framebuffer_bytes": 44564480,
+  "framebuffer_bytes": 89128960,
   "header_card_capacity": 144,
   "camera_id": "CAM2",
   "output_path": "Z:/",
