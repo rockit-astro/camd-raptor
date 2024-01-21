@@ -89,7 +89,7 @@ class RaptorInterface:
         self._sensor_temperature = 0
         self._pcb_temperature = 0
 
-        self._exposure_time = 0
+        self._exposure_time = 1
 
         # Limit and number of frames acquired during the next sequence
         # Set to 0 to run continuously
@@ -221,8 +221,26 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xDF' + period[2:3])
                 self._serial_command(b'\x53\x00\x03\x01\xE0' + period[3:4])
 
+                if self._exposure_time > 1.048:
+                    # Regular short-exposure mode
+                    self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
+
+                    # Exposure time to 0 before enabling long exposures
+                    self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
+                    self._serial_command(b'\x53\x00\x03\x01\xEF\x00')
+                    self._serial_command(b'\x53\x00\x03\x01\xF0\x00')
+                    self._serial_command(b'\x53\x00\x03\x01\xF1\x00')
+
+                    # Long-exposure mode with internal triggering
+                    self._serial_command(b'\x53\x00\x03\x01\xF2\x1C')
+
+                    exp = int(self._exposure_time * 70e6).to_bytes(4, 'big')
+                else:
+                    # Regular short-exposure mode
+                    self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
+                    exp = int(self._exposure_time * 1e6).to_bytes(4, 'big')
+
                 # Set exposure time
-                exp = int(self._exposure_time * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xEE' + exp[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xEF' + exp[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xF0' + exp[2:3])
@@ -511,6 +529,7 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xF0\x1D')
                 self._serial_command(b'\x53\x00\x03\x01\xF1\x80')
                 self._exposure_time = 1
+
 
                 # Enable cooling
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
