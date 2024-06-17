@@ -164,6 +164,10 @@ class RaptorInterface:
             self._cooler_mode = CoolerMode.Unknown
 
     def _serial_command(self, data, response_length=0, timeout=5):
+        """
+        Formats and sends a command message to the camera and reads its response.
+        The caller is assumed to already be holding the xclib lock
+        """
         chk = 0x50
         for b in data:
             chk ^= b
@@ -231,7 +235,8 @@ class RaptorInterface:
                 log.error(self._config.log_name, 'Frame buffer offsets queue is not empty!')
                 return
 
-            dma_buffer_count = self._xclib.pxd_imageZdim(1)
+            with self._lock:
+                dma_buffer_count = self._xclib.pxd_imageZdim(1)
 
             # Allocate buffer space for 32-bit data to support coadding more than 16 frames
             # 16 bit images only use the first half of each buffer slot
@@ -276,7 +281,9 @@ class RaptorInterface:
                 while True:
                     # Wait for frame to become available
                     while True:
-                        buffer = self._xclib.pxd_capturedBuffer(1)
+                        with self._lock:
+                            buffer = self._xclib.pxd_capturedBuffer(1)
+
                         if buffer != last_buffer or self._stop_acquisition or self._processing_stop_signal.value:
                             break
                         time.sleep(0.001)
@@ -287,30 +294,33 @@ class RaptorInterface:
 
                     last_buffer = buffer
 
-                    field = self._xclib.pxd_buffersFieldCount(1, buffer)
-                    if coadd_index > 0 and field != coadd_first_field + coadd_index:
-                        log.warning(self._config.log_name,
-                                    f'sub-exposure {coadd_index + 1} / {coadd_count} dropped; restarting frame')
-                        coadd_index = 0
+                    with self._lock:
+                        field = self._xclib.pxd_buffersFieldCount(1, buffer)
+                        if coadd_index > 0 and field != coadd_first_field + coadd_index:
+                            log.warning(self._config.log_name,
+                                        f'sub-exposure {coadd_index + 1} / {coadd_count} dropped; restarting frame')
+                            coadd_index = 0
 
-                    ret = self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
-                                                     readout_cdata, pixel_count, b'GREY')
-                    self._xclib.pxd_quLive(1, buffer)
-                    if ret < 0:
-                        print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
-                        log.warning(self._config.log_name,
-                                    f'sub-exposure {coadd_index + 1} / {coadd_count} failed; restarting frame')
-                        coadd_index = 0
-                        continue
+                        ret = self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
+                                                         readout_cdata, pixel_count, b'GREY')
+                        self._xclib.pxd_quLive(1, buffer)
+
+                        if ret < 0:
+                            print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
+                            log.warning(self._config.log_name,
+                                        f'sub-exposure {coadd_index + 1} / {coadd_count} failed; restarting frame')
+                            coadd_index = 0
+                            continue
 
                     if platform.system() == 'Windows':
                         ticks = c_uint64()
-                        ret = self._xclib.pxd_buffersSysTicks2(1, buffer, byref(ticks))
-                        if ret < 0:
-                            print(f'Failed to read frame timestamp: {self._xclib.pxd_mesgErrorCode(ret)}')
-                            read_end_time = Time.now()
-                        else:
-                            read_end_time = self._tick_origin + 100 * ticks.value * u.nanosecond
+                        with self._lock:
+                            ret = self._xclib.pxd_buffersSysTicks2(1, buffer, byref(ticks))
+                            if ret < 0:
+                                print(f'Failed to read frame timestamp: {self._xclib.pxd_mesgErrorCode(ret)}')
+                                read_end_time = Time.now()
+                            else:
+                                read_end_time = self._tick_origin + 100 * ticks.value * u.nanosecond
                     else:
                         read_end_time = Time.now()
 
