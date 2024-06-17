@@ -424,6 +424,7 @@ class RaptorInterface:
             self._xclib.pxd_mesgErrorCode.restype = c_char_p
             self._xclib.pxd_infoDriverId.restype = c_char_p
             self._xclib.pxd_infoLibraryId.restype = c_char_p
+            self._xclib.pxd_videoFieldCount.restype = c_uint64
 
             try:
                 ret = self._xclib.pxd_PIXCIopen(pixci_args,
@@ -557,7 +558,7 @@ class RaptorInterface:
                 # Actual readout time is 7.52ms, but we round to
                 # 8ms to avoid frame data stalls and to match the
                 # timestamp resolution
-                self._readout_time = 0.008
+                self._readout_time = 0.015
 
                 # Enable cooling
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
@@ -571,6 +572,11 @@ class RaptorInterface:
 
                 self._readout_width = self._xclib.pxd_imageXdim()
                 self._readout_height = self._xclib.pxd_imageYdim()
+
+                field_count = self._xclib.pxd_videoFieldCount(0x01)
+                register_7e = self._serial_command(b'\x53\x01\x03\x01\x05\x7E', 1)[0]
+                register_e2 = self._serial_command(b'\x53\x01\x03\x01\x05\xE2', 1)[0]
+                print(f'Initial field count: {field_count} reg 0x7E: {register_7e:02X} reg 0xE2: {register_e2:02X}')
 
                 initialized = True
 
