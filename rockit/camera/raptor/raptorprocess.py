@@ -189,9 +189,11 @@ class RaptorInterface:
 
                 # Validate the ACK and checksum
                 if response.raw[-2] != 0x50:
+                    print(' '.join(f'0x{x:02X}' for x in response.raw))
                     raise Exception(f'unexpected ACK value 0x{response.raw[-2]:02x} != 0x50')
 
                 if response.raw[-1] != chk:
+                    print(' '.join(f'0x{x:02X}' for x in response.raw))
                     raise Exception(f'unexpected ACK value 0x{response.raw[-1]:02x} != 0x{chk:02x}')
 
                 return response.raw[:-2]
