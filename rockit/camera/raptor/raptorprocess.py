@@ -448,65 +448,22 @@ class RaptorInterface:
 
                 self._xclib.pxd_serialFlush(1, 0, 1, 1)
 
+                # Enable command ACK, checksum, boot FPGA
+                self._serial_command(b'\x4F\x52')
+
                 # Wait for FPGA to boot
                 # ACK and checksum may or may not be enabled depending
                 # on whether the camera has been power cycled
                 while True:
-                    ret = self._xclib.pxd_serialWrite(1, 0, b'\x49\x50\x19', 3)
-                    if ret < 0:
-                        raise Exception(f'failed to send status query {ret}')
-
-                    ignore_bytes = 0
-                    fpga_booted = False
-                    wait_start = Time.now()
-                    while True:
-                        available = self._xclib.pxd_serialRead(1, 0, None, 0)
-                        if available >= 1:
-                            buf = create_string_buffer(1)
-                            ret = self._xclib.pxd_serialRead(1, 0, buf, 1)
-                            if ret != 1:
-                                raise Exception('failed to read status')
-
-                            status = buf.raw[0]
-
-                            # camera will send an ACK byte
-                            if (status & 0x10) != 0:
-                                ignore_bytes += 1
-
-                            # camera will send a checksum byte
-                            if (status & 0x40) != 0:
-                                ignore_bytes += 1
-
-                            if (status & 0x04) != 0:
-                                fpga_booted = True
-                            break
-
-                        if Time.now() - wait_start > 1 * u.s:
-                            raise Exception('timeout while waiting for status')
-
-                        time.sleep(0.001)
-
-                    if ignore_bytes > 0:
-                        wait_start = Time.now()
-                        while True:
-                            available = self._xclib.pxd_serialRead(1, 0, None, 0)
-                            if available >= ignore_bytes:
-                                buf = create_string_buffer(ignore_bytes)
-                                ret = self._xclib.pxd_serialRead(1, 0, buf, ignore_bytes)
-                                if ret != ignore_bytes:
-                                    raise Exception('failed to read ignored bytes')
-                                break
-
-                            if Time.now() - wait_start > 1 * u.s:
-                                raise Exception('timeout while waiting for ignored bytes')
-
-                            time.sleep(0.001)
-
-                    if fpga_booted:
+                    status = self._serial_command(b'\x49', 1)[0]
+                    print(f'status is 0x{status:02X}')
+                    if (status & 0x04) != 0:
                         break
 
-                # Enable command ACK, checksum, NVM access
-                self._serial_command(b'\x4F\x53')
+                    time.sleep(0.5)
+
+                status = self._serial_command(b'\x49', 1)[0]
+                print(f'status 2 is 0x{status:02X}')
 
                 ret = self._serial_command(b'\x56', 2)
                 self._micro_version = f'{ret[0]}.{ret[1]}'
@@ -545,15 +502,18 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
 
                 # Set exposure time to 1 second while idling
+                self._serial_command(b'\x53\x00\x03\x01\xDC\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xDD\x04')
                 self._serial_command(b'\x53\x00\x03\x01\xDE\x3C')
                 self._serial_command(b'\x53\x00\x03\x01\xDF\x23')
                 self._serial_command(b'\x53\x00\x03\x01\xE0\x10')
 
+                self._serial_command(b'\x53\x00\x03\x01\xED\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xEF\x0F')
                 self._serial_command(b'\x53\x00\x03\x01\xF0\x42')
                 self._serial_command(b'\x53\x00\x03\x01\xF1\x40')
+
                 self._exposure_time = 1
                 # Actual readout time is 7.52ms, but we round to
                 # 8ms to avoid frame data stalls and to match the
@@ -576,8 +536,35 @@ class RaptorInterface:
                 field_count = self._xclib.pxd_videoFieldCount(0x01)
                 register_7e = self._serial_command(b'\x53\x01\x03\x01\x05\x7E', 1)[0]
                 register_e2 = self._serial_command(b'\x53\x01\x03\x01\x05\xE2', 1)[0]
-                print(f'Initial field count: {field_count} reg 0x7E: {register_7e:02X} reg 0xE2: {register_e2:02X}')
+                videostate = self._serial_command(b'\x53\x01\x03\x01\x05\xF9', 1)[0]
+                trigger = self._serial_command(b'\x53\x01\x03\x01\x05\xF2', 1)[0]
 
+                exposure = self._serial_command(b'\x53\x01\x03\x01\x05\xEE', 1)
+                exposure += self._serial_command(b'\x53\x01\x03\x01\x05\xEF', 1)
+                exposure += self._serial_command(b'\x53\x01\x03\x01\x05\xF0', 1)
+                exposure += self._serial_command(b'\x53\x01\x03\x01\x05\xF1', 1)
+
+                framerate = self._serial_command(b'\x53\x01\x03\x01\x05\xDD', 1)
+                framerate += self._serial_command(b'\x53\x01\x03\x01\x05\xDE', 1)
+                framerate += self._serial_command(b'\x53\x01\x03\x01\x05\xDF', 1)
+                framerate += self._serial_command(b'\x53\x01\x03\x01\x05\xE0', 1)
+
+                delay = self._serial_command(b'\x53\x01\x03\x01\x05\xE9', 1)
+                delay += self._serial_command(b'\x53\x01\x03\x01\x05\xEA', 1)
+                delay += self._serial_command(b'\x53\x01\x03\x01\x05\xEB', 1)
+                delay += self._serial_command(b'\x53\x01\x03\x01\x05\xEC', 1)
+
+                ccr0 = self._serial_command(b'\x53\x01\x03\x01\x05\x00', 1)[0]
+                ccr1 = self._serial_command(b'\x53\x01\x03\x01\x05\x01', 1)[0]
+                ccr2 = self._serial_command(b'\x53\x01\x03\x01\x05\x02', 1)[0]
+
+                print(f'Initial field count: {field_count} videostate: {videostate:08b} trigger: {trigger:08b} ccr: {ccr0:08b} {ccr1:08b} {ccr2:08b}')
+                print('exposure', ' '.join(f'{x:02X}' for x in exposure))
+                print('framerate', ' '.join(f'{x:02X}' for x in framerate))
+                print('delay', ' '.join(f'{x:02X}' for x in delay))
+
+                status = self._serial_command(b'\x49', 1)[0]
+                print(f'status 3 is 0x{status:02X}')
                 initialized = True
 
                 return CommandStatus.Succeeded
