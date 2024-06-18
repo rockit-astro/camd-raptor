@@ -192,7 +192,7 @@ class RaptorInterface:
                     raise Exception(f'unexpected ACK value 0x{response.raw[-2]:02x} != 0x50')
 
                 if response.raw[-1] != chk:
-                    raise Exception(f'unexpected ACK value 0x{response.raw[-1]:02x} != 0x{chk:02x}')
+                    raise Exception(f'unexpected checksum value 0x{response.raw[-1]:02x} != 0x{chk:02x}')
 
                 return response.raw[:-2]
 
