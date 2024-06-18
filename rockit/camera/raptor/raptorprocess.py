@@ -448,6 +448,24 @@ class RaptorInterface:
 
                 self._xclib.pxd_serialFlush(1, 0, 1, 1)
 
+                # Enable command ACK, checksum, NVM access, host FPGA in RST until micro responds
+                while True:
+                    ret = self._xclib.pxd_serialWrite(1, 0, b'\x4F\x51\x50\x4E', 4)
+                    if ret < 0:
+                        raise Exception(f'failed to set system state {ret}')
+
+                    time.sleep(0.5)
+                    available = self._xclib.pxd_serialRead(1, 0, None, 0)
+                    print('available', available)
+                    if available > 0:
+                        self._xclib.pxd_serialFlush(1)
+                        break
+
+                # Boot the FPGA
+                ret = self._xclib.pxd_serialWrite(1, 0, b'\x4F\x52\x50\x4D', 4)
+                if ret < 0:
+                    raise Exception(f'failed to set system state {ret}')
+
                 # Wait for FPGA to boot
                 # ACK and checksum may or may not be enabled depending
                 # on whether the camera has been power cycled
