@@ -450,7 +450,10 @@ class RaptorInterface:
 
                 self._xclib.pxd_serialFlush(1, 0, 1, 1)
 
-                # Enable command ACK, checksum, NVM access, host FPGA in RST until micro responds
+                # Reset the microcontroller
+                self._xclib.pxd_serialWrite(1, 0, b'\x55\x99\x66\x11\x50\xEB', 6)
+
+                # Enable command ACK, checksum, NVM access, hold FPGA in RST until micro responds
                 while True:
                     ret = self._xclib.pxd_serialWrite(1, 0, b'\x4F\x51\x50\x4E', 4)
                     if ret < 0:
@@ -459,71 +462,23 @@ class RaptorInterface:
                     time.sleep(0.5)
                     available = self._xclib.pxd_serialRead(1, 0, None, 0)
                     print('available', available)
-                    if available > 0:
-                        self._xclib.pxd_serialFlush(1)
+                    if available >= 2:
                         break
 
+                self._xclib.pxd_serialFlush(1, 0, 1, 1)
+
                 # Boot the FPGA
-                ret = self._xclib.pxd_serialWrite(1, 0, b'\x4F\x52\x50\x4D', 4)
-                if ret < 0:
-                    raise Exception(f'failed to set system state {ret}')
+                self._serial_command(b'\x4F\x52')
 
                 # Wait for FPGA to boot
                 # ACK and checksum may or may not be enabled depending
                 # on whether the camera has been power cycled
                 while True:
-                    ret = self._xclib.pxd_serialWrite(1, 0, b'\x49\x50\x19', 3)
-                    if ret < 0:
-                        raise Exception(f'failed to send status query {ret}')
-
-                    ignore_bytes = 0
-                    fpga_booted = False
-                    wait_start = Time.now()
-                    while True:
-                        available = self._xclib.pxd_serialRead(1, 0, None, 0)
-                        if available >= 1:
-                            buf = create_string_buffer(1)
-                            ret = self._xclib.pxd_serialRead(1, 0, buf, 1)
-                            if ret != 1:
-                                raise Exception('failed to read status')
-
-                            status = buf.raw[0]
-
-                            # camera will send an ACK byte
-                            if (status & 0x10) != 0:
-                                ignore_bytes += 1
-
-                            # camera will send a checksum byte
-                            if (status & 0x40) != 0:
-                                ignore_bytes += 1
-
-                            if (status & 0x04) != 0:
-                                fpga_booted = True
-                            break
-
-                        if Time.now() - wait_start > 1 * u.s:
-                            raise Exception('timeout while waiting for status')
-
-                        time.sleep(0.001)
-
-                    if ignore_bytes > 0:
-                        wait_start = Time.now()
-                        while True:
-                            available = self._xclib.pxd_serialRead(1, 0, None, 0)
-                            if available >= ignore_bytes:
-                                buf = create_string_buffer(ignore_bytes)
-                                ret = self._xclib.pxd_serialRead(1, 0, buf, ignore_bytes)
-                                if ret != ignore_bytes:
-                                    raise Exception('failed to read ignored bytes')
-                                break
-
-                            if Time.now() - wait_start > 1 * u.s:
-                                raise Exception('timeout while waiting for ignored bytes')
-
-                            time.sleep(0.001)
-
-                    if fpga_booted:
+                    ret = self._serial_command(b'\x49', 1)
+                    print(f'fpga status 0x{ret[0]:02X}')
+                    if ret[0] == 0x56:
                         break
+                    time.sleep(0.5)
 
                 # Enable command ACK, checksum, NVM access
                 self._serial_command(b'\x4F\x53')
