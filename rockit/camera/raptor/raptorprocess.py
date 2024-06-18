@@ -533,6 +533,9 @@ class RaptorInterface:
                 # Disable automatic gain calculation mode
                 self._serial_command(b'\x53\x00\x03\x01\x00\x00')
 
+                # Low gain with internal triggering
+                self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
+
                 # Set digital gain to minimum value (256)
                 self._serial_command(b'\x53\x00\x03\x01\xC6\x01')
                 self._serial_command(b'\x53\x00\x03\x01\xC7\x00')
@@ -540,24 +543,24 @@ class RaptorInterface:
                 # Disable non-uniformity corrections
                 self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
 
-                # Low gain with internal triggering
-                self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
-
                 # Set exposure time to 1 second while idling
+                self._serial_command(b'\x53\x00\x03\x01\xDC\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xDD\x04')
                 self._serial_command(b'\x53\x00\x03\x01\xDE\x3C')
                 self._serial_command(b'\x53\x00\x03\x01\xDF\x23')
                 self._serial_command(b'\x53\x00\x03\x01\xE0\x10')
 
+                self._serial_command(b'\x53\x00\x03\x01\xED\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
                 self._serial_command(b'\x53\x00\x03\x01\xEF\x0F')
                 self._serial_command(b'\x53\x00\x03\x01\xF0\x42')
                 self._serial_command(b'\x53\x00\x03\x01\xF1\x40')
+
                 self._exposure_time = 1
                 # Actual readout time is 7.52ms, but we round to
                 # 8ms to avoid frame data stalls and to match the
                 # timestamp resolution
-                self._readout_time = 0.008
+                self._readout_time = 0.015
 
                 # Enable cooling
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
