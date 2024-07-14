@@ -17,7 +17,7 @@
 """client command input handlers"""
 
 import Pyro4
-from rockit.common import TFmt
+from rockit.common import print
 from .config import Config
 from .constants import CommandStatus, CameraStatus, CoolerMode
 
@@ -73,26 +73,24 @@ def status(config, *_):
 
     state_desc = CameraStatus.label(data['state'], True)
     if data['state'] == CameraStatus.Acquiring:
-        progress = f'{data["exposure_progress"]:.1f} / {data["exposure_time"]:.1f}s'
-        state_desc += ' (' + TFmt.Bold + progress + TFmt.Clear + ')'
+        state_desc += f' ([b]{data["exposure_progress"]:.1f} / {data["exposure_time"]:.1f}s[/b])'
 
     # Camera is disabled
     print(f'   Camera is {state_desc}')
     if data['state'] != CameraStatus.Disabled:
         if data['state'] > CameraStatus.Idle:
             if data['sequence_frame_limit'] > 0:
-                print(f'   Acquiring frame {TFmt.Bold}{data["sequence_frame_count"] + 1}' +
-                      f' / {data["sequence_frame_limit"]}{TFmt.Clear}')
+                print(f'   Acquiring frame [b]{data["sequence_frame_count"] + 1} / {data["sequence_frame_limit"]}[/b]')
             else:
-                print(f'   Acquiring {TFmt.Bold}UNTIL STOPPED{TFmt.Clear}')
+                print(f'   Acquiring [b]UNTIL STOPPED[/b]')
 
-        print(f'   Temperature is {TFmt.Bold}{data["sensor_temperature"]:.0f}\u00B0C{TFmt.Clear}' +
+        print(f'   Temperature is [b]{data["sensor_temperature"]:.0f}\u00B0C[/b]' +
               ' (' + CoolerMode.label(data['cooler_mode'], True) + ')')
 
         if data['cooler_setpoint'] is not None:
-            print(f'   Temperature set point is {TFmt.Bold}{data["cooler_setpoint"]:.0f}\u00B0C{TFmt.Clear}')
+            print(f'   Temperature set point is [b]{data["cooler_setpoint"]:.0f}\u00B0C[/b]')
 
-        print(f'   Exposure time is {TFmt.Bold}{data["exposure_time"]:.3f} s{TFmt.Clear}')
+        print(f'   Exposure time is [b]{data["exposure_time"]:.3f} s[/b]')
     return 0
 
 
@@ -130,7 +128,7 @@ def start(config, usage_prefix, args):
         except Exception:
             print('error: invalid exposure count:', args[0])
             return -1
-    print(f'usage: {usage_prefix} start (continuous|<count>)')
+    print(f'usage: {usage_prefix} start <continuous|(count)>')
     return -1
 
 
@@ -155,7 +153,7 @@ def shutdown(config, *_):
 
 def print_usage(usage_prefix):
     """Prints the utility help"""
-    print(f'usage: {usage_prefix} <command> [<args>]')
+    print(f'usage: {usage_prefix} <command> \\[<args>]')
     print()
     print('general commands:')
     print('   status       print a human-readable summary of the camera status')
