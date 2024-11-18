@@ -18,8 +18,8 @@ mkdir -p %{buildroot}%{_udevrulesdir}
 %{__install} %{_sourcedir}/raptor_camd %{buildroot}%{_bindir}
 %{__install} %{_sourcedir}/raptor_camd@.service %{buildroot}%{_unitdir}
 
-%{__install} %{_sourcedir}/cam2.json %{buildroot}%{_sysconfdir}/camd
-%{__install} %{_sourcedir}/cam2.fmt %{buildroot}%{_sysconfdir}/camd
+%{__install} %{_sourcedir}/swir.json %{buildroot}%{_sysconfdir}/camd
+%{__install} %{_sourcedir}/ninox1280.fmt %{buildroot}%{_sysconfdir}/camd
 
 %package server
 Summary:  Raptor camera server
@@ -40,7 +40,7 @@ Group:   Unspecified
 
 %files data-clasp
 %defattr(0644,root,root,-)
-%{_sysconfdir}/camd/cam2.json
-%{_sysconfdir}/camd/cam2.fmt
+%{_sysconfdir}/camd/swir.json
+%{_sysconfdir}/camd/ninox1280.fmt
 
 %changelog
