@@ -56,20 +56,15 @@ def output_process(process_queue, processing_framebuffer, processing_framebuffer
     pipeline_daemon = getattr(daemons, pipeline_daemon_name)
     while True:
         frame = process_queue.get()
-        if frame['coadd_count'] > 1:
-            dtype = np.uint32 if frame['coadd_count'] > 15 else np.uint16
-            coadd_header = ('COADDCNT', frame['coadd_count'], 'exposure is a coaddition of sub-exposures')
-        else:
-            dtype = np.uint16
-            coadd_header = ('COADDCNT', frame['coadd_count'], 'exposure is not coadded')
 
-        data = np.frombuffer(processing_framebuffer, dtype=dtype,
+        data = np.frombuffer(processing_framebuffer, dtype=np.uint16,
                              offset=frame['data_offset'], count=frame['data_height'] * frame['data_width']) \
             .reshape((frame['data_height'], frame['data_width'])).copy()
         processing_framebuffer_offsets.put(frame['data_offset'])
 
+        # HACK: PIXCI time is bogus...
         date_end = frame['read_end_time'] - frame['readout_time'] * u.s
-        date_start = frame['read_end_time'] - frame['frameperiod'] * u.s
+        date_start = date_end - frame['exposure'] * u.s
 
         if frame['cooler_setpoint'] is not None:
             setpoint_header = ('TEMP-SET', frame['cooler_setpoint'], '[deg c] cmos temperature set point')
@@ -84,8 +79,6 @@ def output_process(process_queue, processing_framebuffer, processing_framebuffer
             ('TIME-SRC', 'NTP', 'DATE-OBS is estimated from NTP-synced PC clock'),
             ('EXPTIME', round(frame['exposure'], 3), '[s] actual exposure length'),
             ('EXPCADNC', round(frame['frameperiod'], 3), '[s] exposure cadence'),
-            ('EXPSUBT', round(frame['subexposure'], 3), '[s] sub-exposure length'),
-            coadd_header,
             ('PC-RDEND', frame['read_end_time'].strftime('%Y-%m-%dT%H:%M:%S.%f'),
              '[utc] local PC time when readout completed'),
             (None, None, None),

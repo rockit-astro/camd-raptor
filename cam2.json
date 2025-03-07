@@ -1,0 +1,20 @@
+{
+  "daemon": "clasp_camera_2",
+  "pipeline_daemon": "clasp_pipeline",
+  "pipeline_handover_timeout": 10,
+  "log_name": "raptor_camd@cam2",
+  "control_machines": ["CLASPTCS", "CLASPDAS"],
+  "client_commands_module": "rockit.camera.raptor",
+  "camera_config_path": "C:/Users/ops/src/raptor-camd/cam2.fmt",
+  "camera_model": "Ninox 1280",
+  "camera_serial": 10019,
+  "cooler_setpoint": -15,
+  "cooler_update_delay": 5,
+  "worker_processes": 3,
+  "framebuffer_bytes": 44564480,
+  "header_card_capacity": 144,
+  "camera_id": "CAM2",
+  "output_path": "Z:/",
+  "output_prefix": "cam2",
+  "expcount_path": "C:/Users/ops/src/raptor-camd/cam2-counter.json"
+}

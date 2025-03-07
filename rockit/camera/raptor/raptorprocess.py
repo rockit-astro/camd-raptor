@@ -35,7 +35,6 @@ import time
 import traceback
 from astropy.time import Time
 import astropy.units as u
-import numpy as np
 import Pyro4
 from rockit.common import log
 from .constants import CommandStatus, CameraStatus, CoolerMode
@@ -208,23 +207,15 @@ class RaptorInterface:
         framebuffer_slots = 0
         try:
             with self._lock:
-                # Low gain mode has a maximum exposure time of 1.048.57ms
-                # Split longer requested exposures into multiple sub-exposures
-                coadd_count = 1
-                while self._exposure_time / coadd_count > 1.048:
-                    coadd_count += 1
-
-                exposure_time = self._exposure_time / coadd_count
-
                 # Set frame period
-                period = int((exposure_time + self._readout_time) * 70e6).to_bytes(4, 'big')
+                period = int((self._exposure_time + self._readout_time) * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xDD' + period[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xDE' + period[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xDF' + period[2:3])
                 self._serial_command(b'\x53\x00\x03\x01\xE0' + period[3:4])
 
                 # Set exposure time
-                exp = int(exposure_time * 1e6).to_bytes(4, 'big')
+                exp = int(self._exposure_time * 70e6).to_bytes(4, 'big')
                 self._serial_command(b'\x53\x00\x03\x01\xEE' + exp[0:1])
                 self._serial_command(b'\x53\x00\x03\x01\xEF' + exp[1:2])
                 self._serial_command(b'\x53\x00\x03\x01\xF0' + exp[2:3])
@@ -238,23 +229,15 @@ class RaptorInterface:
             with self._lock:
                 dma_buffer_count = self._xclib.pxd_imageZdim(1)
 
-            # Allocate buffer space for 32-bit data to support coadding more than 16 frames
-            # 16 bit images only use the first half of each buffer slot
-            pixel_count = self._readout_width * self._readout_height
-            frame_size = 4 * pixel_count
+            frame_size = 2 * self._readout_width * self._readout_height
             output_buffer_count = len(self._processing_framebuffer) // frame_size
             if output_buffer_count != dma_buffer_count:
                 size = dma_buffer_count * frame_size
                 print(f'warning: framebuffer_bytes should be set to {size} for optimal performance')
 
             offset = 0
-            framebuffer_slot_arrays = {}
-            framebuffer_dtype = np.uint32 if coadd_count > 15 else np.uint16
             while offset + frame_size <= len(self._processing_framebuffer):
                 self._processing_framebuffer_offsets.put(offset)
-                framebuffer_slot_arrays[offset] = np.frombuffer(self._processing_framebuffer,
-                                                                offset=offset, dtype=framebuffer_dtype,
-                                                                count=pixel_count)
                 offset += frame_size
                 framebuffer_slots += 1
                 if framebuffer_slots == dma_buffer_count:
@@ -266,88 +249,55 @@ class RaptorInterface:
                 for i in range(8):
                     self._xclib.pxd_quLive(1, i + 1)
 
-            readout_buffer = bytearray(2 * pixel_count)
-            readout_array = np.frombuffer(readout_buffer, dtype=np.uint16)
-            readout_cdata = (c_uint16 * pixel_count).from_buffer(readout_buffer)
-
-            aborted = False
             while not self._stop_acquisition and not self._processing_stop_signal.value:
                 self._sequence_exposure_start_time = Time.now()
+
                 framebuffer_offset = self._processing_framebuffer_offsets.get()
+                cdata = (c_uint8 * frame_size).from_buffer(self._processing_framebuffer, framebuffer_offset)
 
-                coadd_index = 0
-                coadd_first_field = 0
-                read_end_time = Time.now()
+                # Wait for frame to become available
                 while True:
-                    # Wait for frame to become available
-                    while True:
-                        with self._lock:
-                            buffer = self._xclib.pxd_capturedBuffer(1)
-
-                        if buffer != last_buffer or self._stop_acquisition or self._processing_stop_signal.value:
-                            break
-                        time.sleep(0.001)
-
-                    if self._stop_acquisition or self._processing_stop_signal.value:
-                        aborted = True
-                        break
-
-                    last_buffer = buffer
-
                     with self._lock:
-                        field = self._xclib.pxd_buffersFieldCount(1, buffer)
-                        if coadd_index > 0 and field != coadd_first_field + coadd_index:
-                            log.warning(self._config.log_name,
-                                        f'sub-exposure {coadd_index + 1} / {coadd_count} dropped; restarting frame')
-                            coadd_index = 0
+                        buffer = self._xclib.pxd_capturedBuffer(1)
 
-                        ret = self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
-                                                         readout_cdata, pixel_count, b'GREY')
-                        self._xclib.pxd_quLive(1, buffer)
-
-                        if ret < 0:
-                            print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
-                            log.warning(self._config.log_name,
-                                        f'sub-exposure {coadd_index + 1} / {coadd_count} failed; restarting frame')
-                            coadd_index = 0
-                            continue
-
-                    if platform.system() == 'Windows':
-                        ticks = c_uint64()
-                        with self._lock:
-                            ret = self._xclib.pxd_buffersSysTicks2(1, buffer, byref(ticks))
-                            if ret < 0:
-                                print(f'Failed to read frame timestamp: {self._xclib.pxd_mesgErrorCode(ret)}')
-                                read_end_time = Time.now()
-                            else:
-                                read_end_time = self._tick_origin + 100 * ticks.value * u.nanosecond
-                    else:
-                        read_end_time = Time.now()
-
-                    if coadd_index == 0:
-                        framebuffer_slot_arrays[framebuffer_offset][:] = readout_array[:]
-                        coadd_first_field = field
-                    else:
-                        framebuffer_slot_arrays[framebuffer_offset] += readout_array
-
-                    coadd_index += 1
-                    if coadd_index == coadd_count:
+                    if buffer != last_buffer or self._stop_acquisition or self._processing_stop_signal.value:
                         break
+                    time.sleep(0.001)
 
-                if aborted:
+                last_buffer = buffer
+
+                if self._stop_acquisition or self._processing_stop_signal.value:
                     # Return unused slot back to the queue to simplify cleanup
                     self._processing_framebuffer_offsets.put(framebuffer_offset)
                     break
+
+                with self._lock:
+                    field = self._xclib.pxd_buffersFieldCount(1, buffer)
+                    ret = self._xclib.pxd_readushort(1, buffer, 0, 0, self._readout_width, self._readout_height,
+                                                     cdata, self._readout_width * self._readout_height, b'GREY')
+                    if ret < 0:
+                        print(f'Failed to read frame data: {self._xclib.pxd_mesgErrorCode(ret)}')
+
+                    self._xclib.pxd_quLive(1, buffer)
+
+                    if platform.system() == 'Windows':
+                        ticks = c_uint64()
+                        ret = self._xclib.pxd_buffersSysTicks2(1, buffer, byref(ticks))
+                        if ret < 0:
+                            print(f'Failed to read frame timestamp: {self._xclib.pxd_mesgErrorCode(ret)}')
+                            read_end_time = Time.now()
+                        else:
+                            read_end_time = self._tick_origin + 100 * ticks.value * u.nanosecond
+                    else:
+                        read_end_time = Time.now()
 
                 self._processing_queue.put({
                     'data_offset': framebuffer_offset,
                     'data_width': self._readout_width,
                     'data_height': self._readout_height,
                     'exposure': float(self._exposure_time),
-                    'subexposure': float(exposure_time),
-                    'coadd_count': coadd_count,
-                    'frameperiod': coadd_count * (exposure_time + self._readout_time),
-                    'field': coadd_first_field,
+                    'frameperiod': self._exposure_time + self._readout_time,
+                    'field': field,
                     'readout_time': self._readout_time,
                     'read_end_time': read_end_time,
                     'cooler_mode': self._cooler_mode,
@@ -537,27 +487,28 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xC6\x01')
                 self._serial_command(b'\x53\x00\x03\x01\xC7\x00')
 
+                # Switch to low gain mode
+                self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
+                self._readout_time = 0.015
+
                 # Disable non-uniformity corrections
                 self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
 
-                # Low gain with internal triggering
-                self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
+                # Exposure time to 0 before enabling long exposures
+                self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
+                self._serial_command(b'\x53\x00\x03\x01\xEF\x00')
+                self._serial_command(b'\x53\x00\x03\x01\xF0\x00')
+                self._serial_command(b'\x53\x00\x03\x01\xF1\x00')
+
+                # Enable long-exposure mode with internal triggering
+                self._serial_command(b'\x53\x00\x03\x01\xF2\x1C')
 
                 # Set exposure time to 1 second while idling
-                self._serial_command(b'\x53\x00\x03\x01\xDD\x04')
-                self._serial_command(b'\x53\x00\x03\x01\xDE\x3C')
-                self._serial_command(b'\x53\x00\x03\x01\xDF\x23')
-                self._serial_command(b'\x53\x00\x03\x01\xE0\x10')
-
-                self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
-                self._serial_command(b'\x53\x00\x03\x01\xEF\x0F')
-                self._serial_command(b'\x53\x00\x03\x01\xF0\x42')
-                self._serial_command(b'\x53\x00\x03\x01\xF1\x40')
+                self._serial_command(b'\x53\x00\x03\x01\xEE\x04')
+                self._serial_command(b'\x53\x00\x03\x01\xEF\x2C')
+                self._serial_command(b'\x53\x00\x03\x01\xF0\x1D')
+                self._serial_command(b'\x53\x00\x03\x01\xF1\x80')
                 self._exposure_time = 1
-                # Actual readout time is 7.52ms, but we round to
-                # 8ms to avoid frame data stalls and to match the
-                # timestamp resolution
-                self._readout_time = 0.008
 
                 # Enable cooling
                 setpoint = int(self._config.cooler_setpoint * self._dac_slope + self._dac_offset).to_bytes(2, 'big')
