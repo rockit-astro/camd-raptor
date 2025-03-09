@@ -483,6 +483,9 @@ class RaptorInterface:
                 # Disable automatic gain calculation mode
                 self._serial_command(b'\x53\x00\x03\x01\x00\x00')
 
+                # Disable non-uniformity corrections
+                self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
+
                 # Set digital gain to minimum value (256)
                 self._serial_command(b'\x53\x00\x03\x01\xC6\x01')
                 self._serial_command(b'\x53\x00\x03\x01\xC7\x00')
@@ -491,14 +494,12 @@ class RaptorInterface:
                 self._serial_command(b'\x53\x00\x03\x01\xF2\x00')
                 self._readout_time = 0.015
 
-                # Disable non-uniformity corrections
-                self._serial_command(b'\x53\x00\x03\x01\xF9\x4C')
-
-                # Exposure time to 0 before enabling long exposures
-                self._serial_command(b'\x53\x00\x03\x01\xEE\x00')
-                self._serial_command(b'\x53\x00\x03\x01\xEF\x00')
-                self._serial_command(b'\x53\x00\x03\x01\xF0\x00')
-                self._serial_command(b'\x53\x00\x03\x01\xF1\x00')
+                # Set frame rate to 40ms (magic value for long exposures)
+                self._serial_command(b'\x53\x00\x03\x01\xDC\x00')
+                self._serial_command(b'\x53\x00\x03\x01\xDD\x00')
+                self._serial_command(b'\x53\x00\x03\x01\xDE\x2A')
+                self._serial_command(b'\x53\x00\x03\x01\xDF\xB9')
+                self._serial_command(b'\x53\x00\x03\x01\xE0\x80')
 
                 # Enable long-exposure mode with internal triggering
                 self._serial_command(b'\x53\x00\x03\x01\xF2\x1C')
