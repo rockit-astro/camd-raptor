@@ -386,9 +386,11 @@ class RaptorInterface:
                 self._camera_library = self._xclib.pxd_infoLibraryId(1).decode('ascii')
                 grabber_model = self._xclib.pxd_infoModel(1)
                 if grabber_model == 0x0030:
-                    self._grabber_model = 'PIXCI_E8'
+                    self._grabber_model = 'PIXCI E8'
+                elif grabber_model == 0x0053:
+                        self._grabber_model = 'PIXCI mf2280'
                 else:
-                    self._grabber_model = 'UNKNOWN ({grabber_model:04x})'
+                    self._grabber_model = f'UNKNOWN ({grabber_model:04x})'
 
                 ret = self._xclib.pxd_serialConfigure(1, 0, 115200, 8, 0, 1, 0, 0, 0)
                 if ret != 0:
