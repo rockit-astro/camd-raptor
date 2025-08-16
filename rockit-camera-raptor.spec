@@ -1,6 +1,6 @@
 Name:      rockit-camera-raptor
 Version:   %{_version}
-Release:   1
+Release:   1%{dist}
 Summary:   Control code for Raptor Ninox 1280 SWIR camera
 Url:       https://github.com/rockit-astro/camd-raptor
 License:   GPL-3.0
